@@ -73,9 +73,13 @@ def uploaded_file_state(uploaded_file) -> dict:
 
 
 def live_search_input(label: str, key: str) -> str:
+    st.markdown('<div class="search-box-wrap">', unsafe_allow_html=True)
     if st_keyup is None:
-        return st.text_input(label, key=key)
-    return st_keyup(label, key=key, debounce=300) or ""
+        value = st.text_input(label, key=key, placeholder="Type to search...")
+    else:
+        value = st_keyup(label, key=key, debounce=300, placeholder="Type to search...") or ""
+    st.markdown("</div>", unsafe_allow_html=True)
+    return value
 
 
 def saved_dashboard_label(path: Path) -> str:
@@ -767,6 +771,35 @@ st.markdown(
         border-radius: 6px !important;
         background: #ffffff !important;
         color: var(--nakama-ink) !important;
+    }
+
+    .search-box-wrap {
+        margin: 8px 0 18px;
+    }
+
+    .search-box-wrap input,
+    .search-box-wrap [data-baseweb="input"] > div,
+    .search-box-wrap [data-baseweb="input"] input {
+        min-height: 46px !important;
+        border: 2px solid var(--nakama-line) !important;
+        border-radius: 8px !important;
+        background: #ffffff !important;
+        color: var(--nakama-ink) !important;
+        font-size: 18px !important;
+        padding: 8px 12px !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+
+    .search-box-wrap input::placeholder {
+        color: var(--nakama-ink) !important;
+        opacity: 0.7 !important;
+    }
+
+    .search-box-wrap input:focus,
+    .search-box-wrap [data-baseweb="input"] > div:focus-within {
+        border-color: var(--nakama-line) !important;
+        box-shadow: 0 0 0 2px var(--nakama-line) !important;
     }
 
     [data-testid="stFileUploader"] {
