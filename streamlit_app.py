@@ -148,6 +148,70 @@ def render_bar_panel(
     )
 
 
+def row_search_mask(frame: pd.DataFrame, query: str, columns: list[str]) -> pd.Series:
+    mask = pd.Series(False, index=frame.index)
+    for column in columns:
+        if column in frame:
+            mask = mask | frame[column].astype(str).str.contains(query, case=False, na=False)
+    return mask
+
+
+def display_money_columns(columns: list[str]) -> dict:
+    return {column: st.column_config.NumberColumn(format="$%.2f") for column in columns}
+
+
+def ensure_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    for column in columns:
+        if column not in frame:
+            frame[column] = pd.Series(dtype="object")
+    return frame
+
+
+def product_monthly_rows(product_monthly_df: pd.DataFrame, product: pd.Series) -> pd.DataFrame:
+    if product_monthly_df.empty:
+        return product_monthly_df
+
+    rows = product_monthly_df
+    for column in ["Brand", "Product Name", "SKU"]:
+        if column in rows and column in product:
+            rows = rows[rows[column].astype(str).eq(str(product[column]))]
+    return rows.sort_values("Order Month")
+
+
+def render_product_expanders(products: pd.DataFrame, product_monthly_df: pd.DataFrame, key_prefix: str) -> None:
+    if products.empty:
+        st.info("No matching products.")
+        return
+
+    for idx, (_, product) in enumerate(products.head(150).iterrows()):
+        summary = (
+            f"{product.get('Product Name', '')} | {product.get('Brand', '')} | "
+            f"Units: {number(float(product.get('Quantity', 0) or 0))} | "
+            f"Sales: {money(float(product.get('Revenue', 0) or 0))}"
+        )
+        with st.expander(summary):
+            st.dataframe(
+                pd.DataFrame([product]),
+                use_container_width=True,
+                hide_index=True,
+                column_config=display_money_columns(["Revenue", "MinPrice", "MaxPrice"]),
+            )
+            monthly = product_monthly_rows(product_monthly_df, product)
+            if monthly.empty:
+                st.info("No monthly details for this product.")
+            else:
+                st.dataframe(
+                    monthly[["Order Month", "Quantity", "Revenue"]],
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={"Revenue": st.column_config.NumberColumn(format="$%.2f")},
+                    key=f"{key_prefix}_product_monthly_{idx}",
+                )
+
+    if len(products) > 150:
+        st.info("Showing the first 150 matching products. Use search to narrow the list.")
+
+
 def render_dashboard(report_data: dict, key_prefix: str) -> None:
     metadata = report_data.get("metadata", {})
     kpis = report_data.get("kpis", {})
@@ -158,6 +222,11 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
     customer_detail_df = pd.DataFrame(report_data.get("customerDetails", []))
     product_monthly_df = pd.DataFrame(report_data.get("productMonthlyDetails", []))
     product_matrix_df = pd.DataFrame(report_data.get("productMonthlyMatrix", []))
+    brand_df = ensure_columns(brand_df, ["Brand", "Quantity", "Revenue", "SkuCount", "Share"])
+    customer_df = ensure_columns(customer_df, ["Customer Name", "Revenue", "Quantity", "Orders", "SkuCount", "Share"])
+    product_df = ensure_columns(product_df, ["Brand", "Product Name", "SKU", "Barcode Text", "Quantity", "Revenue", "MinPrice", "MaxPrice"])
+    customer_detail_df = ensure_columns(customer_detail_df, ["Customer Name", "Brand", "Product Name", "SKU", "Barcode Text", "Quantity", "Revenue", "MinPrice", "MaxPrice"])
+    product_monthly_df = ensure_columns(product_monthly_df, ["Brand", "Product Name", "SKU", "Barcode Text", "Order Month", "Quantity", "Revenue"])
 
     st.markdown(
         '<div class="report-header">'
@@ -203,7 +272,14 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
         )
         filtered = brand_df
         if brand_query and not filtered.empty:
-            filtered = filtered[filtered["Brand"].str.contains(brand_query, case=False, na=False)]
+            brand_mask = filtered["Brand"].str.contains(brand_query, case=False, na=False)
+            product_matches = row_search_mask(
+                product_df,
+                brand_query,
+                ["Brand", "Product Name", "SKU", "Barcode Text"],
+            )
+            matching_brands = set(product_df.loc[product_matches, "Brand"]) if not product_df.empty else set()
+            filtered = filtered[brand_mask | filtered["Brand"].isin(matching_brands)]
         filtered_display = filtered.copy()
         if "Share" in filtered_display:
             filtered_display["Share"] = filtered_display["Share"].astype(float) * 100
@@ -216,6 +292,29 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
                 "Share": st.column_config.NumberColumn(format="%.1f%%"),
             },
         )
+        st.markdown('<div class="section-heading"><h3>Brand Details</h3></div>', unsafe_allow_html=True)
+        for idx, (_, brand) in enumerate(filtered.head(80).iterrows()):
+            brand_name = str(brand.get("Brand", ""))
+            brand_products = product_df[product_df["Brand"].astype(str).eq(brand_name)]
+            if brand_query:
+                product_mask = row_search_mask(
+                    brand_products,
+                    brand_query,
+                    ["Brand", "Product Name", "SKU", "Barcode Text"],
+                )
+                if brand_query.lower() not in brand_name.lower():
+                    brand_products = brand_products[product_mask]
+            with st.expander(
+                f"{brand_name} | Units: {number(float(brand.get('Quantity', 0) or 0))} | "
+                f"Sales: {money(float(brand.get('Revenue', 0) or 0))} | SKUs: {number(float(brand.get('SkuCount', 0) or 0))}"
+            ):
+                render_product_expanders(
+                    brand_products.sort_values("Quantity", ascending=False),
+                    product_monthly_df,
+                    f"{key_prefix}_brand_{idx}",
+                )
+        if len(filtered) > 80:
+            st.info("Showing the first 80 matching brands. Use search to narrow the list.")
 
     with customer_tab:
         st.markdown('<div class="section-heading"><h3>Customer Performance</h3></div>', unsafe_allow_html=True)
@@ -254,6 +353,32 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
                 "Share": st.column_config.NumberColumn(format="%.1f%%"),
             },
         )
+        st.markdown('<div class="section-heading"><h3>Customer Details</h3></div>', unsafe_allow_html=True)
+        for idx, (_, customer) in enumerate(filtered.head(80).iterrows()):
+            customer_name = str(customer.get("Customer Name", ""))
+            details = customer_detail_df[customer_detail_df["Customer Name"].astype(str).eq(customer_name)]
+            if customer_query and not details.empty:
+                detail_mask = row_search_mask(
+                    details,
+                    customer_query,
+                    ["Customer Name", "Brand", "Product Name", "SKU", "Barcode Text"],
+                )
+                if customer_query.lower() not in customer_name.lower():
+                    details = details[detail_mask]
+            with st.expander(
+                f"{customer_name} | Sales: {money(float(customer.get('Revenue', 0) or 0))} | "
+                f"Units: {number(float(customer.get('Quantity', 0) or 0))} | "
+                f"Orders: {number(float(customer.get('Orders', 0) or 0))}"
+            ):
+                st.dataframe(
+                    details.sort_values("Quantity", ascending=False),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config=display_money_columns(["Revenue", "MinPrice", "MaxPrice"]),
+                    key=f"{key_prefix}_customer_details_{idx}",
+                )
+        if len(filtered) > 80:
+            st.info("Showing the first 80 matching customers. Use search to narrow the list.")
 
     with product_tab:
         st.markdown('<div class="section-heading"><h3>Product Performance</h3></div>', unsafe_allow_html=True)
@@ -277,6 +402,12 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
                 "MinPrice": st.column_config.NumberColumn(format="$%.2f"),
                 "MaxPrice": st.column_config.NumberColumn(format="$%.2f"),
             },
+        )
+        st.markdown('<div class="section-heading"><h3>Expandable Product Monthly Details</h3></div>', unsafe_allow_html=True)
+        render_product_expanders(
+            filtered.sort_values("Quantity", ascending=False),
+            product_monthly_df,
+            f"{key_prefix}_product",
         )
 
         if not product_monthly_df.empty:
@@ -381,7 +512,7 @@ st.markdown(
     <style>
     :root {
         --nakama-ink: #172026;
-        --nakama-muted: #65717d;
+        --nakama-muted: #172026;
         --nakama-line: #d9dee4;
         --nakama-panel: #f7f8fa;
         --nakama-accent: #ff4b4b;
@@ -396,7 +527,7 @@ st.markdown(
     .block-container {
         color: var(--nakama-ink);
         font-family: Arial, "Microsoft YaHei", sans-serif;
-        font-size: 15px;
+        font-size: 18px;
     }
 
     body,
@@ -416,7 +547,7 @@ st.markdown(
     h1 {
         margin: 0 0 8px !important;
         color: var(--nakama-ink);
-        font-size: 30px !important;
+        font-size: 33px !important;
         line-height: 1.2 !important;
         letter-spacing: 0 !important;
     }
@@ -424,20 +555,20 @@ st.markdown(
     h2 {
         margin: 0 0 14px !important;
         color: var(--nakama-ink);
-        font-size: 18px !important;
+        font-size: 21px !important;
         letter-spacing: 0 !important;
     }
 
     h3 {
         margin: 0 0 10px !important;
         color: var(--nakama-ink);
-        font-size: 15px !important;
+        font-size: 18px !important;
         letter-spacing: 0 !important;
     }
 
     p,
     [data-testid="stCaptionContainer"] {
-        color: var(--nakama-muted);
+        color: var(--nakama-ink);
     }
 
     [data-testid="stTabs"] [role="tablist"] {
@@ -475,12 +606,12 @@ st.markdown(
 
     .report-header h2 {
         margin: 0 0 6px !important;
-        font-size: 22px !important;
+        font-size: 24px !important;
     }
 
     .report-header p {
         margin: 0;
-        color: var(--nakama-muted);
+        color: var(--nakama-ink);
     }
 
     .highlights {
@@ -499,7 +630,7 @@ st.markdown(
     }
 
     .highlight .value {
-        font-size: 18px;
+        font-size: 20px;
         line-height: 1.25;
         overflow-wrap: anywhere;
     }
@@ -520,8 +651,8 @@ st.markdown(
     }
 
     .label {
-        color: var(--nakama-muted);
-        font-size: 12px;
+        color: var(--nakama-ink);
+        font-size: 14px;
         font-weight: 700;
         letter-spacing: .05em;
         text-transform: uppercase;
@@ -530,7 +661,7 @@ st.markdown(
     .value {
         margin-top: 5px;
         color: var(--nakama-ink);
-        font-size: 22px;
+        font-size: 24px;
         font-weight: 700;
     }
 
