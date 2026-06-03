@@ -6,11 +6,11 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 
 APP_ROOT = Path(__file__).resolve().parent
@@ -74,15 +74,8 @@ def saved_dashboard_label(path: Path) -> str:
 
 
 def saved_dashboard_files() -> list[Path]:
-    html_reports = list(REPORT_DIR.glob("*.html"))
-    html_stems = {path.stem for path in html_reports}
-    json_reports_without_html = [
-        path
-        for path in REPORT_DIR.glob("*.json.gz")
-        if path.name.removesuffix(".json.gz") not in html_stems
-    ]
     return sorted(
-        [*html_reports, *json_reports_without_html],
+        REPORT_DIR.glob("*.json.gz"),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
@@ -106,69 +99,165 @@ def delete_saved_dashboard(path: Path) -> None:
     st.rerun()
 
 
+def render_card_grid(cards: list[tuple[str, str]], class_name: str) -> None:
+    html = "".join(
+        f"""
+        <div class="{class_name}">
+          <div class="label">{escape(label)}</div>
+          <div class="value">{escape(value)}</div>
+        </div>
+        """
+        for label, value in cards
+    )
+    st.markdown(f'<div class="{class_name}s">{html}</div>', unsafe_allow_html=True)
+
+
+def render_bar_panel(
+    title: str,
+    frame: pd.DataFrame,
+    label_column: str,
+    value_column: str,
+    formatter,
+    color_class: str = "",
+) -> None:
+    st.markdown(f'<div class="chart-card"><h3>{escape(title)}</h3>', unsafe_allow_html=True)
+    if frame.empty or value_column not in frame:
+        st.info("No data available.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    rows = frame.head(10).copy()
+    max_value = float(rows[value_column].max()) if not rows.empty else 0
+    if max_value <= 0:
+        max_value = 1
+
+    bars = []
+    for _, row in rows.iterrows():
+        label = escape(str(row.get(label_column, "")))
+        value = float(row.get(value_column, 0) or 0)
+        width = max(3, min(100, value / max_value * 100))
+        bars.append(
+            f"""
+            <div class="bar-row">
+              <div class="bar-label">{label}</div>
+              <div class="bar-track"><div class="bar-fill {color_class}" style="width:{width:.2f}%"></div></div>
+              <div class="bar-value">{escape(formatter(value))}</div>
+            </div>
+            """
+        )
+    st.markdown("".join(bars), unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def render_dashboard(report_data: dict, key_prefix: str) -> None:
     metadata = report_data.get("metadata", {})
     kpis = report_data.get("kpis", {})
 
-    st.caption(kpis.get("dateRange", ""))
-
-    col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("Total Sales", money(float(kpis.get("totalSales", 0))))
-    col2.metric("Units Sold", number(float(kpis.get("totalUnits", 0))))
-    col3.metric("Sold SKUs", number(float(kpis.get("soldSkus", 0))))
-    col4.metric("Brands", number(float(kpis.get("brands", 0))))
-    col5.metric("Customers", number(float(kpis.get("customers", 0))))
-
-    top1, top2, top3 = st.columns(3)
-    top1.info(f"Top Brand: {kpis.get('topBrand', '')}")
-    top2.info(f"Top Customer: {kpis.get('topCustomer', '')}")
-    top3.info(f"Top 10 Brand Share: {percent(float(kpis.get('top10BrandShare', 0)))}")
-
     brand_df = pd.DataFrame(report_data.get("brands", []))
     customer_df = pd.DataFrame(report_data.get("customers", []))
     product_df = pd.DataFrame(report_data.get("products", []))
+    customer_detail_df = pd.DataFrame(report_data.get("customerDetails", []))
     product_monthly_df = pd.DataFrame(report_data.get("productMonthlyDetails", []))
     product_matrix_df = pd.DataFrame(report_data.get("productMonthlyMatrix", []))
 
-    dashboard_tab, brand_tab, customer_tab, product_tab, matrix_tab, raw_tab = st.tabs(
-        ["Overview", "Brands", "Customers", "Products", "Monthly Matrix", "Raw Data"]
+    st.markdown(
+        f"""
+        <div class="report-header">
+          <h2>{escape(str(metadata.get("reportTitle", "Nakama Sales Report")))}</h2>
+          <p>{escape(str(kpis.get("dateRange", "")))}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    render_card_grid(
+        [
+            ("Top Brand", str(kpis.get("topBrand", ""))),
+            ("Top Customer", str(kpis.get("topCustomer", ""))),
+            ("Top 10 Brand Share", percent(float(kpis.get("top10BrandShare", 0) or 0))),
+        ],
+        "highlight",
+    )
+    render_card_grid(
+        [
+            ("Total Sales", money(float(kpis.get("totalSales", 0) or 0))),
+            ("Units Sold", number(float(kpis.get("totalUnits", 0) or 0))),
+            ("Sold SKUs", number(float(kpis.get("soldSkus", 0) or 0))),
+            ("Brands", number(float(kpis.get("brands", 0) or 0))),
+            ("Customers", number(float(kpis.get("customers", 0) or 0))),
+        ],
+        "kpi",
     )
 
-    with dashboard_tab:
-        left, right = st.columns(2)
-        if not brand_df.empty:
-            left.subheader("Top Brands by Sales")
-            brand_chart = brand_df.head(15).set_index("Brand")["Revenue"]
-            left.bar_chart(brand_chart)
-        if not customer_df.empty:
-            right.subheader("Top Customers by Sales")
-            customer_chart = customer_df.head(15).set_index("Customer Name")["Revenue"]
-            right.bar_chart(customer_chart)
-
-        if not product_df.empty:
-            st.subheader("Top Products by Units")
-            top_products = product_df.sort_values("Quantity", ascending=False).head(50)
-            st.dataframe(top_products, use_container_width=True, hide_index=True)
+    brand_tab, customer_tab, product_tab, raw_tab = st.tabs(
+        ["Brand Dashboard", "Customer Dashboard", "Product Dashboard", "Raw Data"]
+    )
 
     with brand_tab:
-        st.subheader("Brand Summary")
-        brand_query = st.text_input("Filter brand", key=f"{key_prefix}_brand_query")
+        st.markdown('<div class="section-heading"><h3>Brand Performance</h3></div>', unsafe_allow_html=True)
+        chart_left, chart_right = st.columns(2)
+        with chart_left:
+            render_bar_panel("Top Brand Sales", brand_df, "Brand", "Revenue", money)
+        with chart_right:
+            render_bar_panel("Top Brand Units Sold", brand_df, "Brand", "Quantity", number, "blue")
+
+        brand_query = st.text_input(
+            "Search brand, product, SKU, barcode",
+            key=f"{key_prefix}_brand_query",
+        )
         filtered = brand_df
         if brand_query and not filtered.empty:
             filtered = filtered[filtered["Brand"].str.contains(brand_query, case=False, na=False)]
-        st.dataframe(filtered, use_container_width=True, hide_index=True)
+        st.dataframe(
+            filtered,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Revenue": st.column_config.NumberColumn(format="$%.2f"),
+                "Share": st.column_config.NumberColumn(format="%.1f%%"),
+            },
+        )
 
     with customer_tab:
-        st.subheader("Customer Summary")
-        customer_query = st.text_input("Filter customer", key=f"{key_prefix}_customer_query")
+        st.markdown('<div class="section-heading"><h3>Customer Performance</h3></div>', unsafe_allow_html=True)
+        chart_left, chart_right = st.columns(2)
+        with chart_left:
+            render_bar_panel("Top Customer Sales", customer_df, "Customer Name", "Revenue", money)
+        with chart_right:
+            render_bar_panel("Top Customer Units Sold", customer_df, "Customer Name", "Quantity", number, "blue")
+
+        customer_query = st.text_input(
+            "Search customer, brand, product, SKU, barcode",
+            key=f"{key_prefix}_customer_query",
+        )
         filtered = customer_df
         if customer_query and not filtered.empty:
-            filtered = filtered[filtered["Customer Name"].str.contains(customer_query, case=False, na=False)]
-        st.dataframe(filtered, use_container_width=True, hide_index=True)
+            summary_mask = filtered["Customer Name"].str.contains(customer_query, case=False, na=False)
+            detail_matches = pd.Series(False, index=customer_detail_df.index)
+            if not customer_detail_df.empty:
+                for column in ["Customer Name", "Brand", "Product Name", "SKU", "Barcode Text"]:
+                    detail_matches = detail_matches | customer_detail_df[column].astype(str).str.contains(
+                        customer_query,
+                        case=False,
+                        na=False,
+                    )
+            matching_customers = set(customer_detail_df.loc[detail_matches, "Customer Name"]) if not customer_detail_df.empty else set()
+            filtered = filtered[summary_mask | filtered["Customer Name"].isin(matching_customers)]
+        st.dataframe(
+            filtered,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Revenue": st.column_config.NumberColumn(format="$%.2f"),
+                "Share": st.column_config.NumberColumn(format="%.1f%%"),
+            },
+        )
 
     with product_tab:
-        st.subheader("Product Details")
-        product_query = st.text_input("Filter product, SKU, barcode, or brand", key=f"{key_prefix}_product_query")
+        st.markdown('<div class="section-heading"><h3>Product Performance</h3></div>', unsafe_allow_html=True)
+        product_query = st.text_input(
+            "Search brand, product, SKU, barcode",
+            key=f"{key_prefix}_product_query",
+        )
         filtered = product_df
         if product_query and not filtered.empty:
             search_cols = ["Brand", "Product Name", "SKU", "Barcode Text"]
@@ -176,19 +265,33 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
             for column in search_cols:
                 mask = mask | filtered[column].astype(str).str.contains(product_query, case=False, na=False)
             filtered = filtered[mask]
-        st.dataframe(filtered, use_container_width=True, hide_index=True)
+        st.dataframe(
+            filtered,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Revenue": st.column_config.NumberColumn(format="$%.2f"),
+                "MinPrice": st.column_config.NumberColumn(format="$%.2f"),
+                "MaxPrice": st.column_config.NumberColumn(format="$%.2f"),
+            },
+        )
 
         if not product_monthly_df.empty:
-            st.subheader("Monthly Product Details")
+            st.markdown('<div class="section-heading"><h3>Monthly Product Details</h3></div>', unsafe_allow_html=True)
             month_options = sorted(product_monthly_df["Order Month"].dropna().unique())
             selected_month = st.selectbox("Month", month_options, key=f"{key_prefix}_month")
             month_rows = product_monthly_df[product_monthly_df["Order Month"].eq(selected_month)]
             month_rows = month_rows.sort_values("Quantity", ascending=False).head(100)
-            st.dataframe(month_rows, use_container_width=True, hide_index=True)
+            st.dataframe(
+                month_rows,
+                use_container_width=True,
+                hide_index=True,
+                column_config={"Revenue": st.column_config.NumberColumn(format="$%.2f")},
+            )
 
-    with matrix_tab:
-        st.subheader("Product Monthly Units Matrix")
-        st.dataframe(product_matrix_df, use_container_width=True, hide_index=True)
+        if not product_matrix_df.empty:
+            st.markdown('<div class="section-heading"><h3>Product Monthly Units Matrix</h3></div>', unsafe_allow_html=True)
+            st.dataframe(product_matrix_df, use_container_width=True, hide_index=True)
 
     with raw_tab:
         st.subheader("Archive Metadata")
@@ -250,9 +353,7 @@ def generate_dashboard(sales_files, products_file, report_title: str) -> None:
             return
 
         archive_base = f"{datetime.now():%Y-%m-%d-%H%M%S}-{filename}"
-        html_archive_path = REPORT_DIR / f"{archive_base}.html"
         data_archive_path = REPORT_DIR / f"{archive_base}.json.gz"
-        html_archive_path.write_text(html_output.read_text(encoding="utf-8"), encoding="utf-8")
         data_archive_path.write_bytes(data_output.read_bytes())
         load_dashboard_data.clear()
         st.success(f"Dashboard saved. Open Saved Dashboards to view it: {archive_base}")
@@ -275,43 +376,177 @@ st.set_page_config(page_title="Nakama Sales Dashboard", layout="wide")
 st.markdown(
     """
     <style>
-    .block-container {
-        max-width: 1800px;
-        padding: 3rem 3rem 4rem;
+    :root {
+        --nakama-ink: #172026;
+        --nakama-muted: #65717d;
+        --nakama-line: #d9dee4;
+        --nakama-panel: #f7f8fa;
+        --nakama-accent: #0f766e;
+        --nakama-accent-2: #3b6ea8;
+        --nakama-accent-soft: #d8efeb;
     }
 
     html, body, [class*="st-"] {
-        font-size: 17px;
+        color: var(--nakama-ink);
+        font-family: Arial, "Microsoft YaHei", sans-serif;
+        font-size: 15px;
+    }
+
+    body,
+    [data-testid="stAppViewContainer"] {
+        background: #ffffff;
+    }
+
+    [data-testid="stHeader"] {
+        background: transparent;
+    }
+
+    .block-container {
+        max-width: 1800px;
+        padding: 32px 40px 42px;
     }
 
     h1 {
-        font-size: 2.7rem !important;
-        line-height: 1.15 !important;
+        margin: 0 0 8px !important;
+        color: var(--nakama-ink);
+        font-size: 30px !important;
+        line-height: 1.2 !important;
+        letter-spacing: 0 !important;
     }
 
     h2 {
-        font-size: 1.9rem !important;
+        margin: 0 0 14px !important;
+        color: var(--nakama-ink);
+        font-size: 18px !important;
+        letter-spacing: 0 !important;
     }
 
     h3 {
-        font-size: 1.35rem !important;
+        margin: 0 0 10px !important;
+        color: var(--nakama-ink);
+        font-size: 15px !important;
+        letter-spacing: 0 !important;
     }
 
-    div[data-testid="stMetric"] {
-        padding: 0.35rem 0;
+    p,
+    [data-testid="stCaptionContainer"] {
+        color: var(--nakama-muted);
     }
 
-    div[data-testid="stMetricValue"] {
-        font-size: 1.8rem;
+    [data-testid="stTabs"] [role="tablist"] {
+        gap: 8px;
+        margin: 12px 0 22px;
+        border-bottom: 1px solid var(--nakama-line);
     }
 
-    div[data-testid="stFileUploader"] section {
-        min-height: 5rem;
+    [data-testid="stTabs"] [role="tab"] {
+        height: auto;
+        margin-bottom: 0;
+        padding: 10px 14px;
+        border: 1px solid var(--nakama-line) !important;
+        border-bottom: 0 !important;
+        border-radius: 8px 8px 0 0 !important;
+        background: #ffffff !important;
+        color: var(--nakama-ink) !important;
+        font-weight: 700;
+    }
+
+    [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+        background: var(--nakama-accent);
+        border-color: var(--nakama-accent);
+        color: #ffffff;
+    }
+
+    [data-testid="stTabs"] [role="tab"] p {
+        color: inherit;
+        font-weight: inherit;
+    }
+
+    [data-testid="stMetric"] {
+        min-height: 110px;
+        padding: 14px;
+        border: 1px solid var(--nakama-line) !important;
+        border-radius: 8px !important;
+        background: var(--nakama-panel) !important;
+    }
+
+    [data-testid="stMetricLabel"] {
+        color: var(--nakama-muted);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+    }
+
+    [data-testid="stMetricValue"] {
+        margin-top: 5px;
+        color: var(--nakama-ink);
+        font-size: 22px;
+        font-weight: 700;
+    }
+
+    [data-testid="stAlert"] {
+        border: 1px solid var(--nakama-line) !important;
+        border-radius: 8px !important;
+        background: #ffffff !important;
+        color: var(--nakama-ink);
+    }
+
+    [data-testid="stFileUploader"] section {
+        min-height: 96px;
+        border: 1px dashed var(--nakama-line);
+        border-radius: 8px;
+        background: var(--nakama-panel);
+    }
+
+    input,
+    textarea,
+    select,
+    [data-baseweb="select"] > div,
+    [data-baseweb="input"] > div {
+        border-color: var(--nakama-line) !important;
+        border-radius: 6px !important;
+        background: #ffffff !important;
+        color: var(--nakama-ink) !important;
     }
 
     button, div[data-testid="stDownloadButton"] button {
-        min-height: 2.75rem;
-        padding: 0.6rem 1rem;
+        min-height: 42px;
+        padding: 10px 14px;
+        border-radius: 6px !important;
+        border-color: var(--nakama-line) !important;
+        font-weight: 700;
+    }
+
+    button[kind="primary"] {
+        border-color: var(--nakama-accent) !important;
+        background: var(--nakama-accent) !important;
+        color: #ffffff !important;
+    }
+
+    div[data-testid="stDownloadButton"] button {
+        background: #ffffff !important;
+        color: var(--nakama-accent-2) !important;
+    }
+
+    [data-testid="stDataFrame"],
+    [data-testid="stTable"] {
+        overflow: hidden;
+        border: 1px solid var(--nakama-line);
+        border-radius: 8px;
+    }
+
+    [data-testid="stJson"] {
+        border: 1px solid var(--nakama-line);
+        border-radius: 8px;
+        background: var(--nakama-panel);
+    }
+
+    @media (max-width: 900px) {
+        .block-container {
+            padding-left: 18px;
+            padding-right: 18px;
+        }
     }
     </style>
     """,
@@ -394,9 +629,5 @@ with saved_tab:
             ):
                 delete_saved_dashboard(selected)
 
-        if selected.name.endswith(".json.gz"):
-            data = load_dashboard_data(str(selected))
-            render_dashboard(data, "saved")
-        else:
-            html = selected.read_text(encoding="utf-8")
-            components.html(html, height=1800, scrolling=True)
+        data = load_dashboard_data(str(selected))
+        render_dashboard(data, "saved")
