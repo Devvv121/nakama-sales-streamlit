@@ -2,6 +2,7 @@
 
 import argparse
 from datetime import datetime
+import gzip
 from html import escape
 import os
 import json
@@ -436,6 +437,101 @@ def write_excel_report(
         return fallback
 
 
+def dashboard_records(frame: pd.DataFrame, columns: list[str]) -> list[dict]:
+    output = []
+    for _, row in frame.iterrows():
+        item = {}
+        for column in columns:
+            value = row[column]
+            if pd.isna(value):
+                item[column] = ""
+            elif hasattr(value, "strftime"):
+                item[column] = value.strftime("%Y-%m-%d")
+            elif isinstance(value, (int, float)):
+                item[column] = float(value)
+            else:
+                item[column] = str(value)
+        output.append(item)
+    return output
+
+
+def build_dashboard_data(
+    grouped: pd.DataFrame,
+    product_grouped: pd.DataFrame,
+    customer_grouped: pd.DataFrame,
+    customer_detail_grouped: pd.DataFrame,
+    customer_monthly_grouped: pd.DataFrame,
+    product_monthly_grouped: pd.DataFrame,
+    product_monthly_matrix: pd.DataFrame,
+    date_range: str,
+    total_quantity: float,
+    total_revenue: float,
+    total_skus: int,
+    report_title: str,
+) -> dict:
+    brand_summary = grouped.copy()
+    brand_summary["Share"] = brand_summary["Revenue"] / total_revenue if total_revenue else 0
+    customer_summary = customer_grouped.copy()
+    customer_summary["Share"] = customer_summary["Revenue"] / total_revenue if total_revenue else 0
+    top_brand = "" if brand_summary.empty else str(brand_summary.iloc[0]["Brand"])
+    top_customer = "" if customer_summary.empty else str(customer_summary.iloc[0]["Customer Name"])
+    top_10_brand_share = (
+        float(brand_summary.head(10)["Revenue"].sum()) / total_revenue
+        if total_revenue and not brand_summary.empty
+        else 0
+    )
+
+    return {
+        "metadata": {
+            "reportTitle": report_title,
+            "generatedAt": datetime.now().isoformat(timespec="seconds"),
+        },
+        "kpis": {
+            "totalSales": total_revenue,
+            "totalUnits": total_quantity,
+            "soldSkus": total_skus,
+            "brands": len(grouped),
+            "customers": len(customer_grouped),
+            "topBrand": top_brand,
+            "topCustomer": top_customer,
+            "top10BrandShare": top_10_brand_share,
+            "dateRange": date_range,
+        },
+        "brands": dashboard_records(brand_summary, ["Brand", "Quantity", "Revenue", "SkuCount", "Share"]),
+        "products": dashboard_records(
+            product_grouped,
+            ["Brand", "Product Name", "SKU", "Barcode Text", "Quantity", "Revenue", "MinPrice", "MaxPrice"],
+        ),
+        "productMonthlyDetails": dashboard_records(
+            product_monthly_grouped,
+            ["Brand", "Product Name", "SKU", "Barcode Text", "Order Month", "Quantity", "Revenue"],
+        ),
+        "productMonthlyMatrix": dashboard_records(
+            product_monthly_matrix,
+            list(product_monthly_matrix.columns),
+        ),
+        "customers": dashboard_records(
+            customer_summary,
+            ["Customer Name", "Revenue", "Quantity", "Orders", "SkuCount", "TopBrand", "TopProduct", "LastOrderDate", "Share"],
+        ),
+        "customerDetails": dashboard_records(
+            customer_detail_grouped,
+            ["Customer Name", "Brand", "Product Name", "SKU", "Barcode Text", "Quantity", "Revenue", "MinPrice", "MaxPrice"],
+        ),
+        "customerMonthlyDetails": dashboard_records(
+            customer_monthly_grouped,
+            ["Customer Name", "Brand", "Product Name", "SKU", "Barcode Text", "Order Month", "Quantity", "Revenue"],
+        ),
+    }
+
+
+def write_dashboard_data(report_data: dict, data_output_file: Path) -> Path:
+    data_output_file.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(data_output_file, "wt", encoding="utf-8") as file:
+        json.dump(report_data, file, ensure_ascii=False)
+    return data_output_file
+
+
 def build_interactive_html_report(
     grouped: pd.DataFrame,
     product_grouped: pd.DataFrame,
@@ -450,73 +546,20 @@ def build_interactive_html_report(
     total_skus: int,
     report_title: str,
 ) -> str:
-    def records(frame: pd.DataFrame, columns: list[str]) -> list[dict]:
-        output = []
-        for _, row in frame.iterrows():
-            item = {}
-            for column in columns:
-                value = row[column]
-                if pd.isna(value):
-                    item[column] = ""
-                elif hasattr(value, "strftime"):
-                    item[column] = value.strftime("%Y-%m-%d")
-                elif isinstance(value, (int, float)):
-                    item[column] = float(value)
-                else:
-                    item[column] = str(value)
-            output.append(item)
-        return output
-
-    brand_summary = grouped.copy()
-    brand_summary["Share"] = brand_summary["Revenue"] / total_revenue if total_revenue else 0
-    customer_summary = customer_grouped.copy()
-    customer_summary["Share"] = customer_summary["Revenue"] / total_revenue if total_revenue else 0
-    top_brand = "" if brand_summary.empty else str(brand_summary.iloc[0]["Brand"])
-    top_customer = "" if customer_summary.empty else str(customer_summary.iloc[0]["Customer Name"])
-    top_10_brand_share = (
-        float(brand_summary.head(10)["Revenue"].sum()) / total_revenue
-        if total_revenue and not brand_summary.empty
-        else 0
+    report_data = build_dashboard_data(
+        grouped,
+        product_grouped,
+        customer_grouped,
+        customer_detail_grouped,
+        customer_monthly_grouped,
+        product_monthly_grouped,
+        product_monthly_matrix,
+        date_range,
+        total_quantity,
+        total_revenue,
+        total_skus,
+        report_title,
     )
-
-    report_data = {
-        "kpis": {
-            "totalSales": total_revenue,
-            "totalUnits": total_quantity,
-            "soldSkus": total_skus,
-            "brands": len(grouped),
-            "customers": len(customer_grouped),
-            "topBrand": top_brand,
-            "topCustomer": top_customer,
-            "top10BrandShare": top_10_brand_share,
-            "dateRange": date_range,
-        },
-        "brands": records(brand_summary, ["Brand", "Quantity", "Revenue", "SkuCount", "Share"]),
-        "products": records(
-            product_grouped,
-            ["Brand", "Product Name", "SKU", "Barcode Text", "Quantity", "Revenue", "MinPrice", "MaxPrice"],
-        ),
-        "productMonthlyDetails": records(
-            product_monthly_grouped,
-            ["Brand", "Product Name", "SKU", "Barcode Text", "Order Month", "Quantity", "Revenue"],
-        ),
-        "productMonthlyMatrix": records(
-            product_monthly_matrix,
-            list(product_monthly_matrix.columns),
-        ),
-        "customers": records(
-            customer_summary,
-            ["Customer Name", "Revenue", "Quantity", "Orders", "SkuCount", "TopBrand", "TopProduct", "LastOrderDate", "Share"],
-        ),
-        "customerDetails": records(
-            customer_detail_grouped,
-            ["Customer Name", "Brand", "Product Name", "SKU", "Barcode Text", "Quantity", "Revenue", "MinPrice", "MaxPrice"],
-        ),
-        "customerMonthlyDetails": records(
-            customer_monthly_grouped,
-            ["Customer Name", "Brand", "Product Name", "SKU", "Barcode Text", "Order Month", "Quantity", "Revenue"],
-        ),
-    }
     data_json = json.dumps(report_data, ensure_ascii=False)
 
     return f"""<!doctype html>
@@ -1006,6 +1049,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--products-file", type=Path, default=DEFAULT_PRODUCTS_FILE)
     parser.add_argument("--html-output", type=Path, default=DEFAULT_HTML_OUTPUT_FILE)
     parser.add_argument("--excel-output", type=Path, default=DEFAULT_EXCEL_OUTPUT_FILE)
+    parser.add_argument("--data-output", type=Path, default=None)
     parser.add_argument("--report-title", default=DEFAULT_REPORT_TITLE)
     return parser.parse_args()
 
@@ -1016,6 +1060,7 @@ def main() -> None:
     products_file = args.products_file
     html_output_file = args.html_output
     excel_output_file = args.excel_output
+    data_output_file = args.data_output
     report_title = args.report_title
 
     if not sales_file.is_file():
@@ -1504,8 +1549,27 @@ def main() -> None:
     )
     html_output_file.write_text(html, encoding="utf-8")
 
+    if data_output_file:
+        report_data = build_dashboard_data(
+            grouped,
+            product_grouped,
+            customer_grouped,
+            customer_detail_grouped,
+            customer_monthly_grouped,
+            product_monthly_grouped,
+            product_monthly_matrix,
+            date_range,
+            total_quantity,
+            total_revenue,
+            total_skus,
+            report_title,
+        )
+        write_dashboard_data(report_data, data_output_file)
+
     print(f"OutputFile: {html_output_file}")
     print(f"ExcelOutputFile: {excel_output_file}")
+    if data_output_file:
+        print(f"DataOutputFile: {data_output_file}")
     print(f"SalesRows: {len(sales)}")
     print(f"ProductRows: {len(products)}")
     print(f"Brands: {len(grouped)}")
