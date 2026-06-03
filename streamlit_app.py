@@ -191,6 +191,8 @@ def format_table_value(value, column: str) -> str:
         return f"{float(value or 0):.1f}%"
     if column in {"Quantity", "SkuCount", "Orders"}:
         return number(float(value or 0))
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return number(float(value)) if float(value).is_integer() else f"{float(value):,.2f}"
     return str(value)
 
 
