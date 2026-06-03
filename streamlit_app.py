@@ -201,7 +201,8 @@ def render_product_expanders(
 
     for idx, (_, product) in enumerate(products.head(limit).iterrows()):
         summary = (
-            f"{product.get('Product Name', '')} | {product.get('Brand', '')} | "
+            f"{product.get('Product Name', '')} | Barcode: {product.get('Barcode Text', '')} | "
+            f"{product.get('Brand', '')} | "
             f"Units: {number(float(product.get('Quantity', 0) or 0))} | "
             f"Sales: {money(float(product.get('Revenue', 0) or 0))}"
         )
