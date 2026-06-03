@@ -73,11 +73,12 @@ def uploaded_file_state(uploaded_file) -> dict:
 
 
 def live_search_input(label: str, key: str) -> str:
+    st.markdown(f'<div class="search-label">{escape(label)}</div>', unsafe_allow_html=True)
     st.markdown('<div class="search-box-wrap">', unsafe_allow_html=True)
     if st_keyup is None:
-        value = st.text_input(label, key=key, placeholder="Type to search...")
+        value = st.text_input(" ", key=key, placeholder="Type to search...", label_visibility="collapsed")
     else:
-        value = st_keyup(label, key=key, debounce=300, placeholder="Type to search...") or ""
+        value = st_keyup(" ", key=key, debounce=300, placeholder="Type to search...") or ""
     st.markdown("</div>", unsafe_allow_html=True)
     return value
 
@@ -773,8 +774,16 @@ st.markdown(
         color: var(--nakama-ink) !important;
     }
 
+    .search-label {
+        margin: 12px 0 6px;
+        color: var(--nakama-ink) !important;
+        font-size: 22px;
+        font-weight: 800;
+        line-height: 1.25;
+    }
+
     .search-box-wrap {
-        margin: 8px 0 18px;
+        margin: 0 0 18px;
     }
 
     .search-box-wrap input,
