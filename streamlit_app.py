@@ -14,7 +14,9 @@ import streamlit.components.v1 as components
 
 
 APP_ROOT = Path(__file__).resolve().parent
-GENERATOR = APP_ROOT / "Code" / "Generate-SalesBrandReport.py"
+GENERATOR = APP_ROOT / "Generate-SalesBrandReport.py"
+if not GENERATOR.exists():
+    GENERATOR = APP_ROOT / "Code" / "Generate-SalesBrandReport.py"
 REPORT_DIR = APP_ROOT / "reports"
 REPORT_DIR.mkdir(exist_ok=True)
 
