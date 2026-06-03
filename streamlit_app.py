@@ -1093,7 +1093,7 @@ with saved_tab:
                 delete_saved_dashboard(selected)
 
         if selected.name.endswith(".html"):
-            components.html(selected.read_text(encoding="utf-8"), height=1800, scrolling=True)
+            components.html(selected.read_text(encoding="utf-8"), height=6000, scrolling=False)
         else:
             data = load_dashboard_data(str(selected))
             render_dashboard(data, "saved")
