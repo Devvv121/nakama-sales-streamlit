@@ -73,8 +73,34 @@ def saved_dashboard_label(path: Path) -> str:
     return path.stem
 
 
+def saved_dashboard_files() -> list[Path]:
+    html_reports = list(REPORT_DIR.glob("*.html"))
+    html_stems = {path.stem for path in html_reports}
+    json_reports_without_html = [
+        path
+        for path in REPORT_DIR.glob("*.json.gz")
+        if path.name.removesuffix(".json.gz") not in html_stems
+    ]
+    return sorted(
+        [*html_reports, *json_reports_without_html],
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+
+
+def companion_dashboard_files(path: Path) -> list[Path]:
+    if path.name.endswith(".json.gz"):
+        base_name = path.name.removesuffix(".json.gz")
+    else:
+        base_name = path.stem
+
+    files = [REPORT_DIR / f"{base_name}.html", REPORT_DIR / f"{base_name}.json.gz"]
+    return [file for file in files if file.exists()]
+
+
 def delete_saved_dashboard(path: Path) -> None:
-    path.unlink()
+    for file in companion_dashboard_files(path):
+        file.unlink()
     load_dashboard_data.clear()
     st.success(f"Deleted dashboard: {saved_dashboard_label(path)}")
     st.rerun()
@@ -223,11 +249,13 @@ def generate_dashboard(sales_files, products_file, report_title: str) -> None:
             st.code(result.stderr or result.stdout)
             return
 
-        archive_name = f"{datetime.now():%Y-%m-%d-%H%M%S}-{filename}.json.gz"
-        archive_path = REPORT_DIR / archive_name
-        archive_path.write_bytes(data_output.read_bytes())
+        archive_base = f"{datetime.now():%Y-%m-%d-%H%M%S}-{filename}"
+        html_archive_path = REPORT_DIR / f"{archive_base}.html"
+        data_archive_path = REPORT_DIR / f"{archive_base}.json.gz"
+        html_archive_path.write_text(html_output.read_text(encoding="utf-8"), encoding="utf-8")
+        data_archive_path.write_bytes(data_output.read_bytes())
         load_dashboard_data.clear()
-        st.success(f"Dashboard saved. Open Saved Dashboards to view it: {archive_name}")
+        st.success(f"Dashboard saved. Open Saved Dashboards to view it: {archive_base}")
 
         st.download_button(
             "Download Excel Report",
@@ -334,11 +362,7 @@ with generate_tab:
 
 with saved_tab:
     st.subheader("Saved Dashboards")
-    saved_reports = sorted(
-        [*REPORT_DIR.glob("*.json.gz"), *REPORT_DIR.glob("*.html")],
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
+    saved_reports = saved_dashboard_files()
 
     if not saved_reports:
         st.info("No saved dashboards found. Add .json.gz reports to the reports folder.")
@@ -375,5 +399,4 @@ with saved_tab:
             render_dashboard(data, "saved")
         else:
             html = selected.read_text(encoding="utf-8")
-            st.warning("This is an old HTML archive. Convert future reports to .json.gz for faster loading.")
             components.html(html, height=1800, scrolling=True)
