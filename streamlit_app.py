@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 try:
     from st_keyup import st_keyup
@@ -899,6 +900,7 @@ st.markdown(
         width: 100%;
         max-height: 460px;
         overflow: auto;
+        padding: 0;
         border: 1px solid var(--nakama-line);
         border-radius: 8px;
         margin: 6px 0 16px;
@@ -907,10 +909,15 @@ st.markdown(
 
     .html-data-table {
         width: 100%;
-        border-collapse: collapse;
+        border-collapse: separate;
+        border-spacing: 0;
         font-size: 17px;
         color: var(--nakama-ink);
         line-height: 1.2;
+    }
+
+    .html-data-table tbody tr {
+        height: 34px;
     }
 
     .html-data-table th,
@@ -934,7 +941,7 @@ st.markdown(
     }
 
     .html-data-table tr:last-child td {
-        border-bottom: 0;
+        border-bottom: 1px solid var(--nakama-line);
     }
 
     [data-testid="stJson"] {
@@ -968,6 +975,36 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.title("Nakama Sales Dashboard")
+components.html(
+    """
+    <script>
+    (() => {
+      const doc = window.parent.document;
+      if (doc.__nakamaShortcutGuardInstalled) return;
+      doc.__nakamaShortcutGuardInstalled = true;
+
+      const isEditable = (target) => {
+        if (!target) return false;
+        const tag = (target.tagName || "").toLowerCase();
+        return tag === "input" || tag === "textarea" || target.isContentEditable;
+      };
+
+      const guardShortcut = (event) => {
+          const key = (event.key || "").toLowerCase();
+          if ((event.ctrlKey || event.metaKey) && (key === "c" || key === "v") && !isEditable(event.target)) {
+            event.stopImmediatePropagation();
+          }
+      };
+
+      ["keydown", "keyup"].forEach((eventName) => {
+        window.parent.addEventListener(eventName, guardShortcut, true);
+        doc.addEventListener(eventName, guardShortcut, true);
+      });
+    })();
+    </script>
+    """,
+    height=0,
+)
 
 saved_tab, generate_tab = st.tabs(["Saved Dashboards", "Generate Dashboard"])
 
