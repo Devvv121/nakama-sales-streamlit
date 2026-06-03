@@ -52,6 +52,14 @@ def save_uploaded_file(uploaded_file, folder: Path) -> Path:
     return path
 
 
+def combine_sales_files(sales_files, output_path: Path) -> Path:
+    frames = []
+    for sales_file in sales_files:
+        frames.append(pd.read_excel(sales_file, dtype={"SKU": "string"}))
+    pd.concat(frames, ignore_index=True).to_excel(output_path, index=False)
+    return output_path
+
+
 def saved_dashboard_label(path: Path) -> str:
     if path.name.endswith(".json.gz"):
         return path.name.removesuffix(".json.gz")
@@ -161,14 +169,20 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
         )
 
 
-def generate_dashboard(sales_file, products_file, report_title: str) -> None:
+def generate_dashboard(sales_files, products_file, report_title: str) -> None:
     if not GENERATOR.exists():
         st.error(f"Generator file not found: {GENERATOR}")
         return
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        sales_path = save_uploaded_file(sales_file, tmp_path)
+        try:
+            sales_path = combine_sales_files(sales_files, tmp_path / "combined_sales_orders.xlsx")
+        except Exception as exc:
+            st.error("Sales Orders files could not be merged.")
+            st.code(str(exc))
+            return
+
         products_path = save_uploaded_file(products_file, tmp_path)
 
         filename = safe_filename(report_title)
@@ -223,21 +237,70 @@ def generate_dashboard(sales_file, products_file, report_title: str) -> None:
 
 
 st.set_page_config(page_title="Nakama Sales Dashboard", layout="wide")
+st.markdown(
+    """
+    <style>
+    .block-container {
+        max-width: 1800px;
+        padding: 3rem 3rem 4rem;
+    }
+
+    html, body, [class*="st-"] {
+        font-size: 17px;
+    }
+
+    h1 {
+        font-size: 2.7rem !important;
+        line-height: 1.15 !important;
+    }
+
+    h2 {
+        font-size: 1.9rem !important;
+    }
+
+    h3 {
+        font-size: 1.35rem !important;
+    }
+
+    div[data-testid="stMetric"] {
+        padding: 0.35rem 0;
+    }
+
+    div[data-testid="stMetricValue"] {
+        font-size: 1.8rem;
+    }
+
+    div[data-testid="stFileUploader"] section {
+        min-height: 5rem;
+    }
+
+    button, div[data-testid="stDownloadButton"] button {
+        min-height: 2.75rem;
+        padding: 0.6rem 1rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 st.title("Nakama Sales Dashboard")
 
 generate_tab, saved_tab = st.tabs(["Generate Dashboard", "Saved Dashboards"])
 
 with generate_tab:
     st.subheader("Generate New Dashboard")
-    sales_file = st.file_uploader("Upload Sales Orders Excel", type=["xlsx", "xls"])
+    sales_files = st.file_uploader(
+        "Upload Sales Orders Excel",
+        type=["xlsx", "xls"],
+        accept_multiple_files=True,
+    )
     products_file = st.file_uploader("Upload Products Excel", type=["xlsx", "xls"])
     report_title = st.text_input("Report Title", value="Nakama Sales Report")
 
-    if sales_file and products_file:
+    if sales_files and products_file:
         if st.button("Generate Dashboard", type="primary"):
-            generate_dashboard(sales_file, products_file, report_title)
+            generate_dashboard(sales_files, products_file, report_title)
     else:
-        st.info("Upload both Excel files to generate a dashboard.")
+        st.info("Upload at least one Sales Orders Excel file and one Products Excel file to generate a dashboard.")
 
 with saved_tab:
     st.subheader("Saved Dashboards")
