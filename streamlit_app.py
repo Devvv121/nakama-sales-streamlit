@@ -101,12 +101,10 @@ def delete_saved_dashboard(path: Path) -> None:
 
 def render_card_grid(cards: list[tuple[str, str]], class_name: str) -> None:
     html = "".join(
-        f"""
-        <div class="{class_name}">
-          <div class="label">{escape(label)}</div>
-          <div class="value">{escape(value)}</div>
-        </div>
-        """
+        f'<div class="{class_name}">'
+        f'<div class="label">{escape(label)}</div>'
+        f'<div class="value">{escape(value)}</div>'
+        "</div>"
         for label, value in cards
     )
     st.markdown(f'<div class="{class_name}s">{html}</div>', unsafe_allow_html=True)
@@ -122,12 +120,7 @@ def render_bar_panel(
 ) -> None:
     if frame.empty or value_column not in frame:
         st.markdown(
-            f"""
-            <div class="chart-card">
-              <h3>{escape(title)}</h3>
-              <p>No data available.</p>
-            </div>
-            """,
+            f'<div class="chart-card"><h3>{escape(title)}</h3><p>No data available.</p></div>',
             unsafe_allow_html=True,
         )
         return
@@ -143,21 +136,14 @@ def render_bar_panel(
         value = float(row.get(value_column, 0) or 0)
         width = max(3, min(100, value / max_value * 100))
         bars.append(
-            f"""
-            <div class="bar-row">
-              <div class="bar-label">{label}</div>
-              <div class="bar-track"><div class="bar-fill {color_class}" style="width:{width:.2f}%"></div></div>
-              <div class="bar-value">{escape(formatter(value))}</div>
-            </div>
-            """
+            '<div class="bar-row">'
+            f'<div class="bar-label">{label}</div>'
+            f'<div class="bar-track"><div class="bar-fill {color_class}" style="width:{width:.2f}%"></div></div>'
+            f'<div class="bar-value">{escape(formatter(value))}</div>'
+            "</div>"
         )
     st.markdown(
-        f"""
-        <div class="chart-card">
-          <h3>{escape(title)}</h3>
-          {''.join(bars)}
-        </div>
-        """,
+        f'<div class="chart-card"><h3>{escape(title)}</h3>{"".join(bars)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -174,12 +160,10 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
     product_matrix_df = pd.DataFrame(report_data.get("productMonthlyMatrix", []))
 
     st.markdown(
-        f"""
-        <div class="report-header">
-          <h2>{escape(str(metadata.get("reportTitle", "Nakama Sales Report")))}</h2>
-          <p>{escape(str(kpis.get("dateRange", "")))}</p>
-        </div>
-        """,
+        '<div class="report-header">'
+        f'<h2>{escape(str(metadata.get("reportTitle", "Nakama Sales Report")))}</h2>'
+        f'<p>{escape(str(kpis.get("dateRange", "")))}</p>'
+        "</div>",
         unsafe_allow_html=True,
     )
     render_card_grid(
