@@ -52,7 +52,20 @@ def save_uploaded_file(uploaded_file, folder: Path) -> Path:
     return path
 
 
-def render_dashboard(report_data: dict) -> None:
+def saved_dashboard_label(path: Path) -> str:
+    if path.name.endswith(".json.gz"):
+        return path.name.removesuffix(".json.gz")
+    return path.stem
+
+
+def delete_saved_dashboard(path: Path) -> None:
+    path.unlink()
+    load_dashboard_data.clear()
+    st.success(f"Deleted dashboard: {saved_dashboard_label(path)}")
+    st.rerun()
+
+
+def render_dashboard(report_data: dict, key_prefix: str) -> None:
     metadata = report_data.get("metadata", {})
     kpis = report_data.get("kpis", {})
 
@@ -98,7 +111,7 @@ def render_dashboard(report_data: dict) -> None:
 
     with brand_tab:
         st.subheader("Brand Summary")
-        brand_query = st.text_input("Filter brand", key="brand_query")
+        brand_query = st.text_input("Filter brand", key=f"{key_prefix}_brand_query")
         filtered = brand_df
         if brand_query and not filtered.empty:
             filtered = filtered[filtered["Brand"].str.contains(brand_query, case=False, na=False)]
@@ -106,7 +119,7 @@ def render_dashboard(report_data: dict) -> None:
 
     with customer_tab:
         st.subheader("Customer Summary")
-        customer_query = st.text_input("Filter customer", key="customer_query")
+        customer_query = st.text_input("Filter customer", key=f"{key_prefix}_customer_query")
         filtered = customer_df
         if customer_query and not filtered.empty:
             filtered = filtered[filtered["Customer Name"].str.contains(customer_query, case=False, na=False)]
@@ -114,7 +127,7 @@ def render_dashboard(report_data: dict) -> None:
 
     with product_tab:
         st.subheader("Product Details")
-        product_query = st.text_input("Filter product, SKU, barcode, or brand", key="product_query")
+        product_query = st.text_input("Filter product, SKU, barcode, or brand", key=f"{key_prefix}_product_query")
         filtered = product_df
         if product_query and not filtered.empty:
             search_cols = ["Brand", "Product Name", "SKU", "Barcode Text"]
@@ -127,7 +140,7 @@ def render_dashboard(report_data: dict) -> None:
         if not product_monthly_df.empty:
             st.subheader("Monthly Product Details")
             month_options = sorted(product_monthly_df["Order Month"].dropna().unique())
-            selected_month = st.selectbox("Month", month_options)
+            selected_month = st.selectbox("Month", month_options, key=f"{key_prefix}_month")
             month_rows = product_monthly_df[product_monthly_df["Order Month"].eq(selected_month)]
             month_rows = month_rows.sort_values("Quantity", ascending=False).head(100)
             st.dataframe(month_rows, use_container_width=True, hide_index=True)
@@ -144,6 +157,7 @@ def render_dashboard(report_data: dict) -> None:
             gzip.compress(json.dumps(report_data, ensure_ascii=False).encode("utf-8")),
             file_name=f"{safe_filename(metadata.get('reportTitle', 'dashboard'))}.json.gz",
             mime="application/gzip",
+            key=f"{key_prefix}_download_data",
         )
 
 
@@ -209,7 +223,7 @@ def generate_dashboard(sales_file, products_file, report_title: str, save_to_arc
             mime="text/html",
         )
 
-        render_dashboard(report_data)
+        render_dashboard(report_data, "generated")
 
 
 st.set_page_config(page_title="Nakama Sales Dashboard", layout="wide")
@@ -232,31 +246,46 @@ with generate_tab:
 
 with saved_tab:
     st.subheader("Saved Dashboards")
-    saved_reports = sorted(REPORT_DIR.glob("*.json.gz"), reverse=True)
-    saved_html_reports = sorted(REPORT_DIR.glob("*.html"), reverse=True)
+    saved_reports = sorted(
+        [*REPORT_DIR.glob("*.json.gz"), *REPORT_DIR.glob("*.html")],
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
 
-    if not saved_reports and not saved_html_reports:
+    if not saved_reports:
         st.info("No saved dashboards found. Add .json.gz reports to the reports folder.")
-    elif saved_reports:
+    else:
         selected = st.selectbox(
             "Select a saved dashboard",
             saved_reports,
-            format_func=lambda path: path.stem.replace(".json", ""),
+            format_func=saved_dashboard_label,
         )
-        data = load_dashboard_data(str(selected))
-        st.download_button(
-            "Download dashboard data",
-            selected.read_bytes(),
-            file_name=selected.name,
-            mime="application/gzip",
-        )
-        render_dashboard(data)
-    else:
-        selected_html = st.selectbox(
-            "Select a saved HTML dashboard",
-            saved_html_reports,
-            format_func=lambda path: path.stem,
-        )
-        html = selected_html.read_text(encoding="utf-8")
-        st.warning("This is an old HTML archive. Convert future reports to .json.gz for faster loading.")
-        components.html(html, height=1800, scrolling=True)
+
+        download_col, delete_col = st.columns([1, 1])
+        with download_col:
+            st.download_button(
+                "Download dashboard file",
+                selected.read_bytes(),
+                file_name=selected.name,
+                mime="application/gzip" if selected.name.endswith(".json.gz") else "text/html",
+            )
+        with delete_col:
+            confirm_delete = st.checkbox(
+                "Confirm delete",
+                key=f"confirm_delete_{selected.name}",
+            )
+            if st.button(
+                "Delete selected dashboard",
+                disabled=not confirm_delete,
+                type="secondary",
+                key=f"delete_{selected.name}",
+            ):
+                delete_saved_dashboard(selected)
+
+        if selected.name.endswith(".json.gz"):
+            data = load_dashboard_data(str(selected))
+            render_dashboard(data, "saved")
+        else:
+            html = selected.read_text(encoding="utf-8")
+            st.warning("This is an old HTML archive. Convert future reports to .json.gz for faster loading.")
+            components.html(html, height=1800, scrolling=True)
