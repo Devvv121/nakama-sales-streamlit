@@ -96,8 +96,15 @@ def saved_dashboard_label(path: Path) -> str:
 
 
 def saved_dashboard_files() -> list[Path]:
+    html_reports = list(REPORT_DIR.glob("*.html"))
+    html_stems = {path.stem for path in html_reports}
+    json_reports_without_html = [
+        path
+        for path in REPORT_DIR.glob("*.json.gz")
+        if path.name.removesuffix(".json.gz") not in html_stems
+    ]
     return sorted(
-        REPORT_DIR.glob("*.json.gz"),
+        [*html_reports, *json_reports_without_html],
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
@@ -522,7 +529,9 @@ def generate_dashboard(sales_files, products_file, report_title: str) -> None:
             return
 
         archive_base = f"{datetime.now():%Y-%m-%d-%H%M%S}-{filename}"
+        html_archive_path = REPORT_DIR / f"{archive_base}.html"
         data_archive_path = REPORT_DIR / f"{archive_base}.json.gz"
+        html_archive_path.write_text(html_output.read_text(encoding="utf-8"), encoding="utf-8")
         data_archive_path.write_bytes(data_output.read_bytes())
         load_dashboard_data.clear()
         st.success(f"Dashboard saved. Open Saved Dashboards to view it: {archive_base}")
@@ -1083,5 +1092,8 @@ with saved_tab:
             ):
                 delete_saved_dashboard(selected)
 
-        data = load_dashboard_data(str(selected))
-        render_dashboard(data, "saved")
+        if selected.name.endswith(".html"):
+            components.html(selected.read_text(encoding="utf-8"), height=1800, scrolling=True)
+        else:
+            data = load_dashboard_data(str(selected))
+            render_dashboard(data, "saved")
