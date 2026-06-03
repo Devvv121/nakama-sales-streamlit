@@ -830,6 +830,24 @@ st.markdown(
         border-radius: 8px;
     }
 
+    [data-testid="stDataFrame"] [role="columnheader"],
+    [data-testid="stDataFrame"] [role="gridcell"],
+    [data-testid="stDataFrame"] [role="rowheader"],
+    [data-testid="stDataFrame"] [data-testid*="column"],
+    [data-testid="stDataFrame"] [class*="header"],
+    [data-testid="stDataFrame"] [class*="Header"],
+    [data-testid="stTable"] th,
+    [data-testid="stTable"] td {
+        color: var(--nakama-ink) !important;
+        -webkit-text-fill-color: var(--nakama-ink) !important;
+        opacity: 1 !important;
+    }
+
+    [data-testid="stDataFrame"] canvas {
+        opacity: 1 !important;
+        filter: contrast(1.25) saturate(0) !important;
+    }
+
     [data-testid="stJson"] {
         border: 1px solid var(--nakama-line);
         border-radius: 8px;
@@ -862,7 +880,7 @@ st.markdown(
 )
 st.title("Nakama Sales Dashboard")
 
-generate_tab, saved_tab = st.tabs(["Generate Dashboard", "Saved Dashboards"])
+saved_tab, generate_tab = st.tabs(["Saved Dashboards", "Generate Dashboard"])
 
 if "product_upload_key" not in st.session_state:
     st.session_state.product_upload_key = 0
