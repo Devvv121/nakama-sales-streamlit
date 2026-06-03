@@ -595,8 +595,19 @@ st.markdown(
     }
 
     p,
-    [data-testid="stCaptionContainer"] {
-        color: var(--nakama-ink);
+    label,
+    span,
+    small,
+    div,
+    [data-testid="stCaptionContainer"],
+    [data-testid="stMarkdownContainer"],
+    [data-testid="stWidgetLabel"],
+    [data-testid="stFileUploader"] *,
+    [data-testid="stAlert"] *,
+    [data-testid="stExpander"] *,
+    [data-testid="stDataFrame"] *,
+    [data-testid="stTable"] * {
+        color: var(--nakama-ink) !important;
     }
 
     [data-testid="stTabs"] [role="tablist"] {
@@ -620,7 +631,7 @@ st.markdown(
     [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
         background: var(--nakama-accent) !important;
         border-color: var(--nakama-accent) !important;
-        color: #ffffff !important;
+        color: var(--nakama-ink) !important;
     }
 
     [data-testid="stTabs"] [role="tab"] p {
@@ -793,12 +804,12 @@ st.markdown(
     div[data-testid="stButton"] button[kind="primary"] {
         border-color: var(--nakama-accent) !important;
         background: var(--nakama-accent) !important;
-        color: #ffffff !important;
+        color: var(--nakama-ink) !important;
     }
 
     div[data-testid="stDownloadButton"] button {
         background: #ffffff !important;
-        color: var(--nakama-accent-2) !important;
+        color: var(--nakama-ink) !important;
     }
 
     [data-testid="stDataFrame"],
