@@ -823,11 +823,18 @@ st.markdown(
         border: 1px solid var(--nakama-line) !important;
         border-radius: 8px !important;
         background: #ffffff !important;
+        margin: 8px 0 !important;
     }
 
     [data-testid="stExpander"] summary {
         color: var(--nakama-ink) !important;
         font-weight: 700;
+        min-height: 38px !important;
+        padding: 8px 12px !important;
+    }
+
+    [data-testid="stExpander"] details > div {
+        padding: 8px 12px !important;
     }
 
     div[data-testid="stDownloadButton"] button {
@@ -876,29 +883,31 @@ st.markdown(
 
     .html-table-box {
         width: 100%;
-        max-height: 520px;
+        max-height: 460px;
         overflow: auto;
         border: 1px solid var(--nakama-line);
         border-radius: 8px;
-        margin: 8px 0 26px;
+        margin: 6px 0 16px;
         background: #ffffff;
     }
 
     .html-data-table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 18px;
+        font-size: 17px;
         color: var(--nakama-ink);
+        line-height: 1.2;
     }
 
     .html-data-table th,
     .html-data-table td {
-        padding: 10px 12px;
+        padding: 6px 10px;
         border-bottom: 1px solid var(--nakama-line);
         color: var(--nakama-ink) !important;
         text-align: left;
         vertical-align: top;
         white-space: nowrap;
+        line-height: 1.2;
     }
 
     .html-data-table th {
