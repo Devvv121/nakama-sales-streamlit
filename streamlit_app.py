@@ -189,12 +189,17 @@ def product_monthly_rows(product_monthly_df: pd.DataFrame, product: pd.Series) -
     return rows.sort_values("Order Month")
 
 
-def render_product_expanders(products: pd.DataFrame, product_monthly_df: pd.DataFrame, key_prefix: str) -> None:
+def render_product_expanders(
+    products: pd.DataFrame,
+    product_monthly_df: pd.DataFrame,
+    key_prefix: str,
+    limit: int = 40,
+) -> None:
     if products.empty:
         st.info("No matching products.")
         return
 
-    for idx, (_, product) in enumerate(products.head(150).iterrows()):
+    for idx, (_, product) in enumerate(products.head(limit).iterrows()):
         summary = (
             f"{product.get('Product Name', '')} | {product.get('Brand', '')} | "
             f"Units: {number(float(product.get('Quantity', 0) or 0))} | "
@@ -219,8 +224,8 @@ def render_product_expanders(products: pd.DataFrame, product_monthly_df: pd.Data
                     key=f"{key_prefix}_product_monthly_{idx}",
                 )
 
-    if len(products) > 150:
-        st.info("Showing the first 150 matching products. Use search to narrow the list.")
+    if len(products) > limit:
+        st.info(f"Showing the first {limit} matching products. Use search to narrow the list.")
 
 
 def render_dashboard(report_data: dict, key_prefix: str) -> None:
@@ -304,10 +309,13 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
             },
         )
         st.markdown('<div class="section-heading"><h3>Brand Details</h3></div>', unsafe_allow_html=True)
-        for idx, (_, brand) in enumerate(filtered.head(80).iterrows()):
-            brand_name = str(brand.get("Brand", ""))
-            brand_products = product_df[product_df["Brand"].astype(str).eq(brand_name)]
-            if brand_query:
+        if not brand_query:
+            st.info("Search a brand, product, SKU, or barcode to show expandable brand details.")
+        else:
+            detail_limit = 40
+            for idx, (_, brand) in enumerate(filtered.head(detail_limit).iterrows()):
+                brand_name = str(brand.get("Brand", ""))
+                brand_products = product_df[product_df["Brand"].astype(str).eq(brand_name)]
                 product_mask = row_search_mask(
                     brand_products,
                     brand_query,
@@ -315,17 +323,18 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
                 )
                 if brand_query.lower() not in brand_name.lower():
                     brand_products = brand_products[product_mask]
-            with st.expander(
-                f"{brand_name} | Units: {number(float(brand.get('Quantity', 0) or 0))} | "
-                f"Sales: {money(float(brand.get('Revenue', 0) or 0))} | SKUs: {number(float(brand.get('SkuCount', 0) or 0))}"
-            ):
-                render_product_expanders(
-                    brand_products.sort_values("Quantity", ascending=False),
-                    product_monthly_df,
-                    f"{key_prefix}_brand_{idx}",
-                )
-        if len(filtered) > 80:
-            st.info("Showing the first 80 matching brands. Use search to narrow the list.")
+                with st.expander(
+                    f"{brand_name} | Units: {number(float(brand.get('Quantity', 0) or 0))} | "
+                    f"Sales: {money(float(brand.get('Revenue', 0) or 0))} | SKUs: {number(float(brand.get('SkuCount', 0) or 0))}"
+                ):
+                    render_product_expanders(
+                        brand_products.sort_values("Quantity", ascending=False),
+                        product_monthly_df,
+                        f"{key_prefix}_brand_{idx}",
+                        limit=40,
+                    )
+            if len(filtered) > detail_limit:
+                st.info(f"Showing the first {detail_limit} matching brands. Use search to narrow the list.")
 
     with customer_tab:
         st.markdown('<div class="section-heading"><h3>Customer Performance</h3></div>', unsafe_allow_html=True)
@@ -365,31 +374,35 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
             },
         )
         st.markdown('<div class="section-heading"><h3>Customer Details</h3></div>', unsafe_allow_html=True)
-        for idx, (_, customer) in enumerate(filtered.head(80).iterrows()):
-            customer_name = str(customer.get("Customer Name", ""))
-            details = customer_detail_df[customer_detail_df["Customer Name"].astype(str).eq(customer_name)]
-            if customer_query and not details.empty:
-                detail_mask = row_search_mask(
-                    details,
-                    customer_query,
-                    ["Customer Name", "Brand", "Product Name", "SKU", "Barcode Text"],
-                )
-                if customer_query.lower() not in customer_name.lower():
-                    details = details[detail_mask]
-            with st.expander(
-                f"{customer_name} | Sales: {money(float(customer.get('Revenue', 0) or 0))} | "
-                f"Units: {number(float(customer.get('Quantity', 0) or 0))} | "
-                f"Orders: {number(float(customer.get('Orders', 0) or 0))}"
-            ):
-                st.dataframe(
-                    details.sort_values("Quantity", ascending=False),
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config=display_money_columns(["Revenue", "MinPrice", "MaxPrice"]),
-                    key=f"{key_prefix}_customer_details_{idx}",
-                )
-        if len(filtered) > 80:
-            st.info("Showing the first 80 matching customers. Use search to narrow the list.")
+        if not customer_query:
+            st.info("Search a customer, brand, product, SKU, or barcode to show expandable customer details.")
+        else:
+            detail_limit = 40
+            for idx, (_, customer) in enumerate(filtered.head(detail_limit).iterrows()):
+                customer_name = str(customer.get("Customer Name", ""))
+                details = customer_detail_df[customer_detail_df["Customer Name"].astype(str).eq(customer_name)]
+                if not details.empty:
+                    detail_mask = row_search_mask(
+                        details,
+                        customer_query,
+                        ["Customer Name", "Brand", "Product Name", "SKU", "Barcode Text"],
+                    )
+                    if customer_query.lower() not in customer_name.lower():
+                        details = details[detail_mask]
+                with st.expander(
+                    f"{customer_name} | Sales: {money(float(customer.get('Revenue', 0) or 0))} | "
+                    f"Units: {number(float(customer.get('Quantity', 0) or 0))} | "
+                    f"Orders: {number(float(customer.get('Orders', 0) or 0))}"
+                ):
+                    st.dataframe(
+                        details.sort_values("Quantity", ascending=False),
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config=display_money_columns(["Revenue", "MinPrice", "MaxPrice"]),
+                        key=f"{key_prefix}_customer_details_{idx}",
+                    )
+            if len(filtered) > detail_limit:
+                st.info(f"Showing the first {detail_limit} matching customers. Use search to narrow the list.")
 
     with product_tab:
         st.markdown('<div class="section-heading"><h3>Product Performance</h3></div>', unsafe_allow_html=True)
@@ -415,11 +428,15 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
             },
         )
         st.markdown('<div class="section-heading"><h3>Expandable Product Monthly Details</h3></div>', unsafe_allow_html=True)
-        render_product_expanders(
-            filtered.sort_values("Quantity", ascending=False),
-            product_monthly_df,
-            f"{key_prefix}_product",
-        )
+        if not product_query:
+            st.info("Search a product, brand, SKU, or barcode to show expandable monthly details.")
+        else:
+            render_product_expanders(
+                filtered.sort_values("Quantity", ascending=False),
+                product_monthly_df,
+                f"{key_prefix}_product",
+                limit=40,
+            )
 
         if not product_monthly_df.empty:
             st.markdown('<div class="section-heading"><h3>Monthly Product Details</h3></div>', unsafe_allow_html=True)
