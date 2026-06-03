@@ -120,10 +120,16 @@ def render_bar_panel(
     formatter,
     color_class: str = "",
 ) -> None:
-    st.markdown(f'<div class="chart-card"><h3>{escape(title)}</h3>', unsafe_allow_html=True)
     if frame.empty or value_column not in frame:
-        st.info("No data available.")
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="chart-card">
+              <h3>{escape(title)}</h3>
+              <p>No data available.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         return
 
     rows = frame.head(10).copy()
@@ -145,8 +151,15 @@ def render_bar_panel(
             </div>
             """
         )
-    st.markdown("".join(bars), unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="chart-card">
+          <h3>{escape(title)}</h3>
+          {''.join(bars)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_dashboard(report_data: dict, key_prefix: str) -> None:
@@ -207,8 +220,11 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
         filtered = brand_df
         if brand_query and not filtered.empty:
             filtered = filtered[filtered["Brand"].str.contains(brand_query, case=False, na=False)]
+        filtered_display = filtered.copy()
+        if "Share" in filtered_display:
+            filtered_display["Share"] = filtered_display["Share"].astype(float) * 100
         st.dataframe(
-            filtered,
+            filtered_display,
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -242,8 +258,11 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
                     )
             matching_customers = set(customer_detail_df.loc[detail_matches, "Customer Name"]) if not customer_detail_df.empty else set()
             filtered = filtered[summary_mask | filtered["Customer Name"].isin(matching_customers)]
+        filtered_display = filtered.copy()
+        if "Share" in filtered_display:
+            filtered_display["Share"] = filtered_display["Share"].astype(float) * 100
         st.dataframe(
-            filtered,
+            filtered_display,
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -381,9 +400,10 @@ st.markdown(
         --nakama-muted: #65717d;
         --nakama-line: #d9dee4;
         --nakama-panel: #f7f8fa;
-        --nakama-accent: #0f766e;
-        --nakama-accent-2: #3b6ea8;
-        --nakama-accent-soft: #d8efeb;
+        --nakama-accent: #ff4b4b;
+        --nakama-accent-2: #2f6f9f;
+        --nakama-accent-soft: #ffe1e1;
+        --nakama-accent-2-soft: #d9eaf2;
     }
 
     html, body, [class*="st-"] {
@@ -452,9 +472,9 @@ st.markdown(
     }
 
     [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
-        background: var(--nakama-accent);
-        border-color: var(--nakama-accent);
-        color: #ffffff;
+        background: var(--nakama-accent) !important;
+        border-color: var(--nakama-accent) !important;
+        color: #ffffff !important;
     }
 
     [data-testid="stTabs"] [role="tab"] p {
@@ -462,15 +482,57 @@ st.markdown(
         font-weight: inherit;
     }
 
-    [data-testid="stMetric"] {
-        min-height: 110px;
-        padding: 14px;
-        border: 1px solid var(--nakama-line) !important;
-        border-radius: 8px !important;
-        background: var(--nakama-panel) !important;
+    .report-header {
+        margin: 6px 0 14px;
     }
 
-    [data-testid="stMetricLabel"] {
+    .report-header h2 {
+        margin: 0 0 6px !important;
+        font-size: 22px !important;
+    }
+
+    .report-header p {
+        margin: 0;
+        color: var(--nakama-muted);
+    }
+
+    .highlights {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .highlight {
+        min-height: 88px;
+        padding: 16px;
+        border: 1px solid var(--nakama-line);
+        border-radius: 8px;
+        background: #ffffff;
+    }
+
+    .highlight .value {
+        font-size: 18px;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+    }
+
+    .kpis {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+
+    .kpi {
+        min-height: 110px;
+        padding: 14px;
+        border: 1px solid var(--nakama-line);
+        border-radius: 8px;
+        background: var(--nakama-panel);
+    }
+
+    .label {
         color: var(--nakama-muted);
         font-size: 12px;
         font-weight: 700;
@@ -478,10 +540,65 @@ st.markdown(
         text-transform: uppercase;
     }
 
-    [data-testid="stMetricValue"] {
+    .value {
         margin-top: 5px;
         color: var(--nakama-ink);
         font-size: 22px;
+        font-weight: 700;
+    }
+
+    .section-heading {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 18px 0 10px;
+    }
+
+    .chart-card {
+        min-height: 260px;
+        padding: 14px;
+        border: 1px solid var(--nakama-line);
+        border-radius: 8px;
+        background: #ffffff;
+        margin: 8px 0 18px;
+    }
+
+    .chart-card h3 {
+        margin: 0 0 10px !important;
+    }
+
+    .bar-row {
+        display: grid;
+        grid-template-columns: minmax(160px, 260px) 1fr minmax(90px, auto);
+        gap: 10px;
+        align-items: center;
+        margin: 8px 0;
+    }
+
+    .bar-label {
+        font-weight: 700;
+        overflow-wrap: anywhere;
+    }
+
+    .bar-track {
+        height: 18px;
+        overflow: hidden;
+        border-radius: 5px;
+        background: var(--nakama-accent-soft);
+    }
+
+    .bar-fill {
+        height: 100%;
+        background: var(--nakama-accent);
+    }
+
+    .bar-fill.blue {
+        background: var(--nakama-accent-2);
+    }
+
+    .bar-value {
+        text-align: right;
         font-weight: 700;
     }
 
@@ -546,6 +663,20 @@ st.markdown(
         .block-container {
             padding-left: 18px;
             padding-right: 18px;
+        }
+
+        .highlights,
+        .kpis {
+            grid-template-columns: 1fr;
+        }
+
+        .bar-row {
+            grid-template-columns: 1fr;
+            gap: 5px;
+        }
+
+        .bar-value {
+            text-align: left;
         }
     }
     </style>
