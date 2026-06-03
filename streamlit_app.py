@@ -775,9 +775,19 @@ st.markdown(
         color: var(--nakama-ink) !important;
     }
 
+    [data-testid="stFileUploader"] {
+        border: 1px solid var(--nakama-line) !important;
+        border-radius: 8px !important;
+        background: #ffffff !important;
+        padding: 12px 14px !important;
+        margin: 8px 0 18px !important;
+    }
+
     [data-testid="stFileUploader"] section,
     [data-testid="stFileUploaderDropzone"] {
-        border-color: var(--nakama-line) !important;
+        min-height: 82px !important;
+        border: 1px solid var(--nakama-line) !important;
+        border-radius: 8px !important;
         background: #ffffff !important;
         color: var(--nakama-ink) !important;
     }
