@@ -75,7 +75,7 @@ def uploaded_file_state(uploaded_file) -> dict:
 def live_search_input(label: str, key: str) -> str:
     if st_keyup is None:
         return st.text_input(label, key=key)
-    return st_keyup(label, key=key, debounce=250) or ""
+    return st_keyup(label, key=key) or ""
 
 
 def saved_dashboard_label(path: Path) -> str:
