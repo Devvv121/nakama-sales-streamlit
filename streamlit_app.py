@@ -78,7 +78,12 @@ def live_search_input(label: str, key: str) -> str:
     if st_keyup is None:
         value = st.text_input(" ", key=key, placeholder="Type to search...", label_visibility="collapsed")
     else:
-        value = st_keyup(" ", key=key, debounce=300, placeholder="Type to search...") or ""
+        value = st_keyup(
+            " ",
+            key=key,
+            placeholder="Type to search...",
+            label_visibility="collapsed",
+        ) or ""
     st.markdown("</div>", unsafe_allow_html=True)
     return value
 
@@ -775,10 +780,10 @@ st.markdown(
     }
 
     .search-label {
-        margin: 12px 0 6px;
+        margin: 14px 0 8px;
         color: var(--nakama-ink) !important;
-        font-size: 22px;
-        font-weight: 800;
+        font-size: 28px;
+        font-weight: 900;
         line-height: 1.25;
     }
 
