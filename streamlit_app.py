@@ -75,7 +75,7 @@ def uploaded_file_state(uploaded_file) -> dict:
 def live_search_input(label: str, key: str) -> str:
     if st_keyup is None:
         return st.text_input(label, key=key)
-    return st_keyup(label, key=key) or ""
+    return st_keyup(label, key=key, debounce=300) or ""
 
 
 def saved_dashboard_label(path: Path) -> str:
@@ -541,12 +541,12 @@ st.markdown(
     :root {
         --nakama-ink: #172026;
         --nakama-muted: #172026;
-        --nakama-line: #d9dee4;
-        --nakama-panel: #f7f8fa;
+        --nakama-line: #000000;
+        --nakama-panel: #ffffff;
         --nakama-accent: #ff4b4b;
         --nakama-accent-2: #2f6f9f;
-        --nakama-accent-soft: #ffe1e1;
-        --nakama-accent-2-soft: #d9eaf2;
+        --nakama-accent-soft: #ffffff;
+        --nakama-accent-2-soft: #ffffff;
     }
 
     html,
@@ -762,6 +762,24 @@ st.markdown(
         border-radius: 6px !important;
         background: #ffffff !important;
         color: var(--nakama-ink) !important;
+    }
+
+    [data-testid="stFileUploader"] section,
+    [data-testid="stFileUploaderDropzone"] {
+        border-color: var(--nakama-line) !important;
+        background: #ffffff !important;
+        color: var(--nakama-ink) !important;
+    }
+
+    [data-testid="stExpander"] {
+        border: 1px solid var(--nakama-line) !important;
+        border-radius: 8px !important;
+        background: #ffffff !important;
+    }
+
+    [data-testid="stExpander"] summary {
+        color: var(--nakama-ink) !important;
+        font-weight: 700;
     }
 
     div[data-testid="stDownloadButton"] button {
