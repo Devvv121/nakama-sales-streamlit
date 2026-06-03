@@ -406,7 +406,10 @@ st.markdown(
         --nakama-accent-2-soft: #d9eaf2;
     }
 
-    html, body, [class*="st-"] {
+    html,
+    body,
+    .stApp,
+    .block-container {
         color: var(--nakama-ink);
         font-family: Arial, "Microsoft YaHei", sans-serif;
         font-size: 15px;
@@ -609,16 +612,7 @@ st.markdown(
         color: var(--nakama-ink);
     }
 
-    [data-testid="stFileUploader"] section {
-        min-height: 96px;
-        border: 1px dashed var(--nakama-line);
-        border-radius: 8px;
-        background: var(--nakama-panel);
-    }
-
-    input,
-    textarea,
-    select,
+    [data-testid="stTextInput"] input,
     [data-baseweb="select"] > div,
     [data-baseweb="input"] > div {
         border-color: var(--nakama-line) !important;
@@ -627,7 +621,7 @@ st.markdown(
         color: var(--nakama-ink) !important;
     }
 
-    button, div[data-testid="stDownloadButton"] button {
+    div[data-testid="stDownloadButton"] button {
         min-height: 42px;
         padding: 10px 14px;
         border-radius: 6px !important;
@@ -635,7 +629,7 @@ st.markdown(
         font-weight: 700;
     }
 
-    button[kind="primary"] {
+    div[data-testid="stButton"] button[kind="primary"] {
         border-color: var(--nakama-accent) !important;
         background: var(--nakama-accent) !important;
         color: #ffffff !important;
