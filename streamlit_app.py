@@ -12,6 +12,11 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+try:
+    from st_keyup import st_keyup
+except ImportError:
+    st_keyup = None
+
 
 APP_ROOT = Path(__file__).resolve().parent
 GENERATOR = APP_ROOT / "Generate-SalesBrandReport.py"
@@ -65,6 +70,12 @@ def uploaded_file_state(uploaded_file) -> dict:
         "name": uploaded_file.name,
         "bytes": uploaded_file.getvalue(),
     }
+
+
+def live_search_input(label: str, key: str) -> str:
+    if st_keyup is None:
+        return st.text_input(label, key=key)
+    return st_keyup(label, key=key, debounce=250) or ""
 
 
 def saved_dashboard_label(path: Path) -> str:
@@ -266,7 +277,7 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
         with chart_right:
             render_bar_panel("Top Brand Units Sold", brand_df, "Brand", "Quantity", number, "blue")
 
-        brand_query = st.text_input(
+        brand_query = live_search_input(
             "Search brand, product, SKU, barcode",
             key=f"{key_prefix}_brand_query",
         )
@@ -324,7 +335,7 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
         with chart_right:
             render_bar_panel("Top Customer Units Sold", customer_df, "Customer Name", "Quantity", number, "blue")
 
-        customer_query = st.text_input(
+        customer_query = live_search_input(
             "Search customer, brand, product, SKU, barcode",
             key=f"{key_prefix}_customer_query",
         )
@@ -382,7 +393,7 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
 
     with product_tab:
         st.markdown('<div class="section-heading"><h3>Product Performance</h3></div>', unsafe_allow_html=True)
-        product_query = st.text_input(
+        product_query = live_search_input(
             "Search brand, product, SKU, barcode",
             key=f"{key_prefix}_product_query",
         )
