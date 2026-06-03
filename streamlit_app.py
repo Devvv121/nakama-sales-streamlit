@@ -161,7 +161,7 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
         )
 
 
-def generate_dashboard(sales_file, products_file, report_title: str, save_to_archive: bool) -> None:
+def generate_dashboard(sales_file, products_file, report_title: str) -> None:
     if not GENERATOR.exists():
         st.error(f"Generator file not found: {GENERATOR}")
         return
@@ -202,13 +202,11 @@ def generate_dashboard(sales_file, products_file, report_title: str, save_to_arc
             st.code(result.stderr or result.stdout)
             return
 
-        report_data = load_dashboard_data(str(data_output))
-
-        if save_to_archive:
-            archive_name = f"{datetime.now():%Y-%m-%d-%H%M%S}-{filename}.json.gz"
-            archive_path = REPORT_DIR / archive_name
-            archive_path.write_bytes(data_output.read_bytes())
-            st.success(f"Saved to history: {archive_name}")
+        archive_name = f"{datetime.now():%Y-%m-%d-%H%M%S}-{filename}.json.gz"
+        archive_path = REPORT_DIR / archive_name
+        archive_path.write_bytes(data_output.read_bytes())
+        load_dashboard_data.clear()
+        st.success(f"Dashboard saved. Open Saved Dashboards to view it: {archive_name}")
 
         st.download_button(
             "Download Excel Report",
@@ -223,8 +221,6 @@ def generate_dashboard(sales_file, products_file, report_title: str, save_to_arc
             mime="text/html",
         )
 
-        render_dashboard(report_data, "generated")
-
 
 st.set_page_config(page_title="Nakama Sales Dashboard", layout="wide")
 st.title("Nakama Sales Dashboard")
@@ -236,11 +232,10 @@ with generate_tab:
     sales_file = st.file_uploader("Upload Sales Orders Excel", type=["xlsx", "xls"])
     products_file = st.file_uploader("Upload Products Excel", type=["xlsx", "xls"])
     report_title = st.text_input("Report Title", value="Nakama Sales Report")
-    save_to_archive = st.checkbox("Save this dashboard to history", value=True)
 
     if sales_file and products_file:
         if st.button("Generate Dashboard", type="primary"):
-            generate_dashboard(sales_file, products_file, report_title, save_to_archive)
+            generate_dashboard(sales_file, products_file, report_title)
     else:
         st.info("Upload both Excel files to generate a dashboard.")
 
