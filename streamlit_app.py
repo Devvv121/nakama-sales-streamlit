@@ -47,8 +47,8 @@ def load_dashboard_data(path: str) -> dict:
 
 
 def save_uploaded_file(uploaded_file, folder: Path) -> Path:
-    path = folder / uploaded_file.name
-    path.write_bytes(uploaded_file.getbuffer())
+    path = folder / Path(uploaded_file["name"]).name
+    path.write_bytes(uploaded_file["bytes"])
     return path
 
 
@@ -58,6 +58,13 @@ def combine_sales_files(sales_files, output_path: Path) -> Path:
         frames.append(pd.read_excel(sales_file, dtype={"SKU": "string"}))
     pd.concat(frames, ignore_index=True).to_excel(output_path, index=False)
     return output_path
+
+
+def uploaded_file_state(uploaded_file) -> dict:
+    return {
+        "name": uploaded_file.name,
+        "bytes": uploaded_file.getvalue(),
+    }
 
 
 def saved_dashboard_label(path: Path) -> str:
@@ -286,6 +293,9 @@ st.title("Nakama Sales Dashboard")
 
 generate_tab, saved_tab = st.tabs(["Generate Dashboard", "Saved Dashboards"])
 
+if "product_upload_key" not in st.session_state:
+    st.session_state.product_upload_key = 0
+
 with generate_tab:
     st.subheader("Generate New Dashboard")
     sales_files = st.file_uploader(
@@ -293,7 +303,27 @@ with generate_tab:
         type=["xlsx", "xls"],
         accept_multiple_files=True,
     )
-    products_file = st.file_uploader("Upload Products Excel", type=["xlsx", "xls"])
+
+    st.write("Upload Products Excel")
+    products_file = st.session_state.get("products_file")
+    if products_file:
+        product_name_col, product_action_col = st.columns([4, 1])
+        product_name_col.info(f"Selected product file: {products_file['name']}")
+        if product_action_col.button("Change Products Excel", key="change_products_file"):
+            st.session_state.pop("products_file", None)
+            st.session_state.product_upload_key += 1
+            st.rerun()
+    else:
+        uploaded_products_file = st.file_uploader(
+            "Upload Products Excel",
+            type=["xlsx", "xls"],
+            key=f"products_file_{st.session_state.product_upload_key}",
+            label_visibility="collapsed",
+        )
+        if uploaded_products_file:
+            st.session_state.products_file = uploaded_file_state(uploaded_products_file)
+            st.rerun()
+
     report_title = st.text_input("Report Title", value="Nakama Sales Report")
 
     if sales_files and products_file:
