@@ -171,6 +171,46 @@ def display_money_columns(columns: list[str]) -> dict:
     return {column: st.column_config.NumberColumn(format="$%.2f") for column in columns}
 
 
+def format_table_value(value, column: str) -> str:
+    if pd.isna(value):
+        return ""
+    if column in {"Revenue", "MinPrice", "MaxPrice"}:
+        return money(float(value or 0))
+    if column in {"Share"}:
+        return f"{float(value or 0):.1f}%"
+    if column in {"Quantity", "SkuCount", "Orders"}:
+        return number(float(value or 0))
+    return str(value)
+
+
+def render_html_table(frame: pd.DataFrame, max_rows: int = 300) -> None:
+    if frame.empty:
+        st.info("No matching rows.")
+        return
+
+    display = frame.head(max_rows).copy()
+    header = "".join(f"<th>{escape(str(column))}</th>" for column in display.columns)
+    rows = []
+    for _, row in display.iterrows():
+        cells = "".join(
+            f"<td>{escape(format_table_value(row[column], str(column)))}</td>"
+            for column in display.columns
+        )
+        rows.append(f"<tr>{cells}</tr>")
+
+    st.markdown(
+        '<div class="html-table-box">'
+        '<table class="html-data-table">'
+        f"<thead><tr>{header}</tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody>"
+        "</table>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    if len(frame) > max_rows:
+        st.info(f"Showing the first {max_rows} rows. Use search to narrow the table.")
+
+
 def ensure_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     for column in columns:
         if column not in frame:
@@ -207,23 +247,12 @@ def render_product_expanders(
             f"Sales: {money(float(product.get('Revenue', 0) or 0))}"
         )
         with st.expander(summary):
-            st.dataframe(
-                pd.DataFrame([product]),
-                use_container_width=True,
-                hide_index=True,
-                column_config=display_money_columns(["Revenue", "MinPrice", "MaxPrice"]),
-            )
+            render_html_table(pd.DataFrame([product]), max_rows=1)
             monthly = product_monthly_rows(product_monthly_df, product)
             if monthly.empty:
                 st.info("No monthly details for this product.")
             else:
-                st.dataframe(
-                    monthly[["Order Month", "Quantity", "Revenue"]],
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={"Revenue": st.column_config.NumberColumn(format="$%.2f")},
-                    key=f"{key_prefix}_product_monthly_{idx}",
-                )
+                render_html_table(monthly[["Order Month", "Quantity", "Revenue"]], max_rows=60)
 
     if len(products) > limit:
         st.info(f"Showing the first {limit} matching products. Use search to narrow the list.")
@@ -300,15 +329,7 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
         filtered_display = filtered.copy()
         if "Share" in filtered_display:
             filtered_display["Share"] = filtered_display["Share"].astype(float) * 100
-        st.dataframe(
-            filtered_display,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Revenue": st.column_config.NumberColumn(format="$%.2f"),
-                "Share": st.column_config.NumberColumn(format="%.1f%%"),
-            },
-        )
+        render_html_table(filtered_display, max_rows=300)
         st.markdown('<div class="section-heading"><h3>Brand Details</h3></div>', unsafe_allow_html=True)
         if not brand_query:
             st.info("Search a brand, product, SKU, or barcode to show expandable brand details.")
@@ -365,15 +386,7 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
         filtered_display = filtered.copy()
         if "Share" in filtered_display:
             filtered_display["Share"] = filtered_display["Share"].astype(float) * 100
-        st.dataframe(
-            filtered_display,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Revenue": st.column_config.NumberColumn(format="$%.2f"),
-                "Share": st.column_config.NumberColumn(format="%.1f%%"),
-            },
-        )
+        render_html_table(filtered_display, max_rows=300)
         st.markdown('<div class="section-heading"><h3>Customer Details</h3></div>', unsafe_allow_html=True)
         if not customer_query:
             st.info("Search a customer, brand, product, SKU, or barcode to show expandable customer details.")
@@ -395,13 +408,7 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
                     f"Units: {number(float(customer.get('Quantity', 0) or 0))} | "
                     f"Orders: {number(float(customer.get('Orders', 0) or 0))}"
                 ):
-                    st.dataframe(
-                        details.sort_values("Quantity", ascending=False),
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config=display_money_columns(["Revenue", "MinPrice", "MaxPrice"]),
-                        key=f"{key_prefix}_customer_details_{idx}",
-                    )
+                    render_html_table(details.sort_values("Quantity", ascending=False), max_rows=300)
             if len(filtered) > detail_limit:
                 st.info(f"Showing the first {detail_limit} matching customers. Use search to narrow the list.")
 
@@ -418,16 +425,7 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
             for column in search_cols:
                 mask = mask | filtered[column].astype(str).str.contains(product_query, case=False, na=False)
             filtered = filtered[mask]
-        st.dataframe(
-            filtered,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Revenue": st.column_config.NumberColumn(format="$%.2f"),
-                "MinPrice": st.column_config.NumberColumn(format="$%.2f"),
-                "MaxPrice": st.column_config.NumberColumn(format="$%.2f"),
-            },
-        )
+        render_html_table(filtered, max_rows=300)
         st.markdown('<div class="section-heading"><h3>Expandable Product Monthly Details</h3></div>', unsafe_allow_html=True)
         if not product_query:
             st.info("Search a product, brand, SKU, or barcode to show expandable monthly details.")
@@ -445,16 +443,11 @@ def render_dashboard(report_data: dict, key_prefix: str) -> None:
             selected_month = st.selectbox("Month", month_options, key=f"{key_prefix}_month")
             month_rows = product_monthly_df[product_monthly_df["Order Month"].eq(selected_month)]
             month_rows = month_rows.sort_values("Quantity", ascending=False).head(100)
-            st.dataframe(
-                month_rows,
-                use_container_width=True,
-                hide_index=True,
-                column_config={"Revenue": st.column_config.NumberColumn(format="$%.2f")},
-            )
+            render_html_table(month_rows, max_rows=300)
 
         if not product_matrix_df.empty:
             st.markdown('<div class="section-heading"><h3>Product Monthly Units Matrix</h3></div>', unsafe_allow_html=True)
-            st.dataframe(product_matrix_df, use_container_width=True, hide_index=True)
+            render_html_table(product_matrix_df, max_rows=300)
 
     with raw_tab:
         st.subheader("Archive Metadata")
@@ -846,6 +839,46 @@ st.markdown(
     [data-testid="stDataFrame"] canvas {
         opacity: 1 !important;
         filter: contrast(1.25) saturate(0) !important;
+    }
+
+    .html-table-box {
+        width: 100%;
+        max-height: 520px;
+        overflow: auto;
+        border: 1px solid var(--nakama-line);
+        border-radius: 8px;
+        margin: 8px 0 26px;
+        background: #ffffff;
+    }
+
+    .html-data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 18px;
+        color: var(--nakama-ink);
+    }
+
+    .html-data-table th,
+    .html-data-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--nakama-line);
+        color: var(--nakama-ink) !important;
+        text-align: left;
+        vertical-align: top;
+        white-space: nowrap;
+    }
+
+    .html-data-table th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #ffffff;
+        border-bottom: 2px solid var(--nakama-line);
+        font-weight: 700;
+    }
+
+    .html-data-table tr:last-child td {
+        border-bottom: 0;
     }
 
     [data-testid="stJson"] {
